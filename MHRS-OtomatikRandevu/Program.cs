@@ -26,6 +26,11 @@ namespace MHRS_OtomatikRandevu
             _client = new ClientService();
             _notificationService = new NotificationService();
 
+            // ───────── ENV DEĞERLERİNİ OKU ─────────
+    TC_NO = Environment.GetEnvironmentVariable("MHRS_TC")       ?? string.Empty;
+    SIFRE = Environment.GetEnvironmentVariable("MHRS_PASSWORD") ?? string.Empty;
+            
+
             #region Giriş Yap Bölümü
             do
             {
