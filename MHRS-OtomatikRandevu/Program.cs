@@ -27,21 +27,27 @@ namespace MHRS_OtomatikRandevu
             _notificationService = new NotificationService();
 
             // ───────── ENV DEĞERLERİNİ OKU ─────────
-    TC_NO = Environment.GetEnvironmentVariable("MHRS_TC")       ?? string.Empty;
-    SIFRE = Environment.GetEnvironmentVariable("MHRS_PASSWORD") ?? string.Empty;
+            TC_NO = Environment.GetEnvironmentVariable("MHRS_TC")       ?? string.Empty;
+            SIFRE = Environment.GetEnvironmentVariable("MHRS_PASSWORD") ?? string.Empty;
             
 
             #region Giriş Yap Bölümü
             do
             {
                 Console.Clear();
-                Console.WriteLine("MHRS Otomatik Randevu Sistemine Hoşgeldiniz.\nLütfen giriş yapmak için bilgilerinizi giriniz.");
+                Console.WriteLine("MHRS Otomatik Randevu Sistemine Hoşgeldiniz.");
 
-                Console.Write("TC: ");
-                TC_NO = Console.ReadLine();
+                if (string.IsNullOrEmpty(TC_NO))
+                {
+                    Console.Write("TC: ");
+                    TC_NO = Console.ReadLine();
+                }
 
-                Console.Write("Şifre: ");
-                SIFRE = Console.ReadLine();
+                if (string.IsNullOrEmpty(SIFRE))
+                {
+                    Console.Write("Şifre: ");
+                    SIFRE = Console.ReadLine();
+                }
 
                 Console.WriteLine("Giriş Yapılıyor...");
 
