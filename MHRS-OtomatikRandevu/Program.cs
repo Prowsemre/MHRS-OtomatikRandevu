@@ -369,7 +369,7 @@ namespace MHRS_OtomatikRandevu
                 if (slot == null || slot == default)
                 {
                     Console.WriteLine($"Müsait randevu bulunamadı | Kontrol Saati: {DateTime.Now.ToShortTimeString()}");
-                    Thread.Sleep(TimeSpan.FromMinutes(5));
+                    Thread.Sleep(TimeSpan.FromMinutes(1));
                     continue;
                 }
 
