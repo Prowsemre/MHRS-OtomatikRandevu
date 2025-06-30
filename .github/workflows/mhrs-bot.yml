@@ -19,7 +19,7 @@ on:
 jobs:
   mhrs:
     runs-on: ubuntu-latest
-    timeout-minutes: 3          # Job en fazla 3 dk’da bitsin
+    timeout-minutes: 9          # Job en fazla 9 dk’da bitsin
     concurrency:
       group: mhrs
       cancel-in-progress: true  # Çakışan eski job varsa iptal et
