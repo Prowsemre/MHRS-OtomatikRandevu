@@ -6,6 +6,7 @@ using MHRS_OtomatikRandevu.Services.Abstracts;
 using MHRS_OtomatikRandevu.Urls;
 using MHRS_OtomatikRandevu.Utils;
 using System.Net;
+using DotNetEnv;
 
 namespace MHRS_OtomatikRandevu
 {
@@ -23,6 +24,30 @@ namespace MHRS_OtomatikRandevu
 
         static void Main(string[] args)
         {
+            // ENV yükle (DotNetEnv kullanırsan)
+            DotNetEnv.Env.Load();
+
+            _client = new ClientService();
+            _notificationService = new NotificationService();
+
+            // ────── ENV DEĞERLERİNİ OKU ──────
+            TC_NO = Environment.GetEnvironmentVariable("MHRS_TC")       ?? string.Empty;
+            SIFRE = Environment.GetEnvironmentVariable("MHRS_PASSWORD") ?? string.Empty;
+
+            // Eğer çevre değişkenlerinde varsa interaktif giriş SORGUSUNU atla
+            if (!string.IsNullOrEmpty(TC_NO) && !string.IsNullOrEmpty(SIFRE))
+            {
+                Console.WriteLine($"[INFO] TC ve şifre çevre değişkenlerinden yüklendi.");
+            }
+            else
+            {
+                // INTERAKTİF KULLANICI GİRİŞİ
+                Console.Write("TC Kimlik No: ");
+                TC_NO = Console.ReadLine()?.Trim();
+
+                Console.Write("Şifre: ");
+                SIFRE = ReadPassword();
+            }
             _client = new ClientService();
             _notificationService = new NotificationService();
 
