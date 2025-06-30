@@ -13,6 +13,7 @@ namespace MHRS_OtomatikRandevu.Services
         public ClientService()
         {
             _client = new HttpClient();
+            _client.Timeout = TimeSpan.FromMinutes(5); // TIMEOUT 5 dk!
         }
 
         public ApiResponse<T> Get<T>(string baseUrl, string endpoint) where T : class
@@ -30,15 +31,28 @@ namespace MHRS_OtomatikRandevu.Services
             return response;
         }
 
+        // --- BURASI YENİ: 3 kez deneyen POST (özellikle login için)
         public async Task<ApiResponse<T>> Post<T>(string baseUrl, string endpoint, object requestModel) where T : class
         {
-            var response = await _client.PostAsJsonAsync(string.Concat(baseUrl, endpoint), requestModel);
-            var data = response.Content.ReadAsStringAsync().Result;
-            if (string.IsNullOrEmpty(data))
-                return new();
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                try
+                {
+                    var response = await _client.PostAsJsonAsync(string.Concat(baseUrl, endpoint), requestModel);
+                    var data = await response.Content.ReadAsStringAsync();
+                    if (string.IsNullOrEmpty(data))
+                        return new();
 
-            var mappedData = JsonSerializer.Deserialize<ApiResponse<T>>(data);
-            return mappedData;
+                    var mappedData = JsonSerializer.Deserialize<ApiResponse<T>>(data);
+                    return mappedData!;
+                }
+                catch (TaskCanceledException)
+                {
+                    Console.WriteLine($"POST timeout, deneme {attempt}/3");
+                    await Task.Delay(3000); // 3 sn bekle
+                }
+            }
+            return new(); // 3 deneme de başarısızsa boş objeyle dön
         }
 
         public HttpResponseMessage PostSimple(string baseUrl, string endpoint, object requestModel)
