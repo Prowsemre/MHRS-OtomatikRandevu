@@ -111,18 +111,25 @@ namespace MHRS_OtomatikRandevu.Services
                     {
                         if (mappedData.Errors != null && mappedData.Errors.Length > 0)
                         {
-                            Console.WriteLine("[ERROR] POST API Hatası:");
-                            foreach (var error in mappedData.Errors)
+                            // RND4010 "randevu bulunamadı" hatası normal durum, konsola yazdırma
+                            bool hasNormalError = mappedData.Errors.Any(e => e.ToString().Contains("RND4010"));
+                            
+                            if (!hasNormalError)
                             {
-                                Console.WriteLine($"  - {error}");
-                                
-                                // LGN1004 hatası için özel mesaj
-                                if (error.ToString().Contains("LGN1004"))
+                                Console.WriteLine("[ERROR] POST API Hatası:");
+                                foreach (var error in mappedData.Errors)
                                 {
-                                    Console.WriteLine("[INFO] Bu hata genellikle yanlış TC/şifre veya sistem bakımından kaynaklanır.");
-                                    Console.WriteLine("[INFO] Lütfen .env dosyasındaki bilgileri kontrol edin veya daha sonra tekrar deneyin.");
+                                    Console.WriteLine($"  - {error}");
+                                    
+                                    // LGN1004 hatası için özel mesaj
+                                    if (error.ToString().Contains("LGN1004"))
+                                    {
+                                        Console.WriteLine("[INFO] Bu hata genellikle yanlış TC/şifre veya sistem bakımından kaynaklanır.");
+                                        Console.WriteLine("[INFO] Lütfen .env dosyasındaki bilgileri kontrol edin veya daha sonra tekrar deneyin.");
+                                    }
                                 }
                             }
+                            // RND4010 hatası durumunda sadece log dosyasına yaz, konsola yazdırma
                         }
                         else
                         {

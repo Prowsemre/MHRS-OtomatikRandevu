@@ -96,6 +96,12 @@ namespace MHRS_OtomatikRandevu
             // ENV DEĞERLERİNİ OKU
             TC_NO = Environment.GetEnvironmentVariable("MHRS_TC") ?? string.Empty;
             SIFRE = Environment.GetEnvironmentVariable("MHRS_PASSWORD") ?? string.Empty;
+            
+            // Tarih ve bildirim ayarlarını oku
+            ENV_START_DATE = Environment.GetEnvironmentVariable("MHRS_START_DATE") ?? "2025-07-07";
+            var telegramFreq = Environment.GetEnvironmentVariable("TELEGRAM_NOTIFY_FREQUENCY");
+            if (!string.IsNullOrEmpty(telegramFreq) && int.TryParse(telegramFreq, out int freq))
+                TELEGRAM_NOTIFY_FREQUENCY = freq;
 
             // Sunucu ortamında interaktif giriş yapılmasın, eksikse hata verip çık
             if (string.IsNullOrEmpty(TC_NO) || string.IsNullOrEmpty(SIFRE))
@@ -386,7 +392,8 @@ namespace MHRS_OtomatikRandevu
             Console.WriteLine($"Başlangıç Zamanı: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             Console.WriteLine($"Arama Kriterleri: İl({provinceIndex}) İlçe({districtIndex}) Klinik({clinicIndex})");
             Console.WriteLine($"Hastane({hospitalIndex}) Yer({placeIndex}) Doktor({doctorIndex})");
-            Console.WriteLine($"Tarih Aralığı: {startDate} - {endDate}");
+            Console.WriteLine($"Tarih Aralığı: {ENV_START_DATE} - {endDate}");
+            Console.WriteLine($"Telegram Bildirimi: Her {TELEGRAM_NOTIFY_FREQUENCY} denemede bir");
             Console.WriteLine("=====================================");
             Console.WriteLine("Bot çalışıyor... (Sadece önemli olaylar gösterilecek)");
             Console.WriteLine();
@@ -404,7 +411,7 @@ namespace MHRS_OtomatikRandevu
             // İlk başlatma bildirimi gönder
             if (_notificationService != null)
             {
-                var startMessage = $"🤖 MHRS Bot Başlatıldı!\n\n🕐 Başlangıç: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n🎯 Hedef: İl({provinceIndex}) İlçe({districtIndex}) Klinik({clinicIndex})\n🧪 İlk test denemesi yapılıyor...";
+                var startMessage = $"🤖 MHRS Bot Başlatıldı!\n\n🕐 Başlangıç: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n🎯 Hedef: İl({provinceIndex}) İlçe({districtIndex}) Klinik({clinicIndex})\n📅 Tarih: {ENV_START_DATE}\n🧪 İlk test denemesi yapılıyor...";
                 _ = Task.Run(() => _notificationService.SendNotification(startMessage));
             }
 
@@ -422,9 +429,9 @@ namespace MHRS_OtomatikRandevu
                     // İlk denemeden sonra normal saat kontrolü
                     if (!IsWithinAllowedWindow(DateTime.Now))
                     {
-                        if (attemptCount % 10 == 0) // Her 10 denemede bir konsola göster
+                        if (attemptCount % 30 == 0) // Her 30 denemede bir konsola göster
                         {
-                            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Saat aralığı dışında, bekleniyor...");
+                            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Saat aralığı dışında, bekleniyor... (Deneme #{attemptCount})");
                         }
                         LogStatus("Saat aralığı dışında, bekleniyor");
                         Thread.Sleep(TimeSpan.FromSeconds(30));
@@ -481,21 +488,21 @@ namespace MHRS_OtomatikRandevu
                     // Basit log kaydı - sadece dosyaya
                     LogStatus($"Deneme #{attemptCount} - Müsait randevu bulunamadı");
                     
-                    // Her 5 denemede bir konsola minimal bilgi ver (ilk denemeden sonra)
-                    if (attemptCount > 0 && attemptCount % 5 == 0)
+                    // Her 10 denemede bir konsola minimal bilgi ver (ilk denemeden sonra)
+                    if (attemptCount > 1 && attemptCount % 10 == 0)
                     {
-                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {attemptCount} deneme - Müsait randevu bulunamadı, arama devam ediyor...");
+                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Deneme #{attemptCount} - Müsait randevu bulunamadı");
                     }
                     
-                    // Her 10 denemede bir "randevu bulunamadı" Telegram bildirimi gönder
-                    if (attemptCount > 0 && attemptCount % 10 == 0 && _notificationService != null)
+                    // Telegram bildirim frekansına göre "randevu bulunamadı" bildirimi gönder
+                    if (attemptCount > 1 && attemptCount % TELEGRAM_NOTIFY_FREQUENCY == 0 && _notificationService != null)
                     {
                         var notFoundMessage = $"🔍 Randevu Arama Raporu\n\n❌ {attemptCount} deneme yapıldı, müsait randevu bulunamadı\n⏰ Saat: {DateTime.Now:HH:mm:ss}\n🔄 Arama devam ediyor...\n📅 Hedef tarih: {ENV_START_DATE}";
                         _ = Task.Run(() => _notificationService.SendNotification(notFoundMessage));
                     }
                     
-                    // Her 50 denemede bir Telegram/Email bildirimi gönder
-                    if (attemptCount > 0 && attemptCount % 50 == 0 && _notificationService != null)
+                    // Her 50 denemede bir genel durum raporu gönder
+                    if (attemptCount > 1 && attemptCount % 50 == 0 && _notificationService != null)
                     {
                         var statusMessage = $"📊 MHRS Bot Durum Raporu\n\n🔄 Toplam Deneme: {attemptCount}\n⏰ Çalışma Süresi: {DateTime.Now.Subtract(DateTime.Now.Date):hh\\:mm}\n🔍 Durum: Randevu aranıyor...\n📅 Hedef Tarih: {ENV_START_DATE}";
                         _ = Task.Run(() => _notificationService.SendNotification(statusMessage));
@@ -599,8 +606,8 @@ namespace MHRS_OtomatikRandevu
             var slotListResponse = client.Post<List<SlotResponseModel>>(MHRSUrls.BaseUrl, MHRSUrls.GetSlots, slotRequestModel).Result;
             if (slotListResponse.Data is null)
             {
-                // Hata mesajını sadece loga yaz, konsola yazdırma
-                LogStatus("GetSlot API hatası - Data null");
+                // API'den yanıt alamadığında sadece log dosyasına yaz, konsola yazdırma
+                // Bu durum normal: randevu yoksa data null dönebilir
                 return null;
             }
 
@@ -644,29 +651,31 @@ namespace MHRS_OtomatikRandevu
         static void LogStatus(string status, string? slotTime = null, bool showConsole = false)
         {
             var logPath = Path.Combine(Directory.GetCurrentDirectory(), LOG_FILE_NAME);
-            var logLine = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {status}";
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            var logLine = $"[{timestamp}] {status}";
             if (!string.IsNullOrEmpty(slotTime))
                 logLine += $" | Slot: {slotTime}";
             
             // Dosyaya her zaman yaz
-            File.AppendAllText(logPath, logLine + Environment.NewLine);
+            try
+            {
+                File.AppendAllText(logPath, logLine + Environment.NewLine);
+            }
+            catch
+            {
+                // Log dosyası yazılamıyorsa sessizce devam et
+            }
             
             // Konsola sadece önemli mesajları yazdır
             if (showConsole)
             {
                 Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {status}");
                 if (!string.IsNullOrEmpty(slotTime))
-                    Console.WriteLine($"             Slot: {slotTime}");
+                    Console.WriteLine($"             📅 Slot: {slotTime}");
             }
         }
 
-        static int? PROVINCE_ID;
-        static int? DISTRICT_ID;
-        static int? CLINIC_ID;
-        static int? HOSPITAL_ID;
-        static int? PLACE_ID;
-        static int? DOCTOR_ID;
         static string? ENV_START_DATE;
-        static string? ENV_END_DATE;
+        static int TELEGRAM_NOTIFY_FREQUENCY = 10;  // Her kaç denemede bir bildirim
     }
 }

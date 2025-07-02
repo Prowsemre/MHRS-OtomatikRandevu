@@ -30,6 +30,7 @@ MHRS_END_DATE=
 # Chat ID almak için: @userinfobot'a mesaj atın
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
+TELEGRAM_NOTIFY_FREQUENCY=10
 
 # Diğer bildirim türleri (opsiyonel, boş bırakılabilir)
 EMAIL_SMTP_HOST=
