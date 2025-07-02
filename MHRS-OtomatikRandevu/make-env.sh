@@ -25,25 +25,16 @@ MHRS_DOCTOR_ID=
 MHRS_START_DATE=
 MHRS_END_DATE=
 
-# Telegram Bot Bildirimleri (Opsiyonel)
+# Telegram Bot Bildirimleri (ÖNERİLEN)
 # Bot Token almak için: @BotFather'a /newbot yazın
 # Chat ID almak için: @userinfobot'a mesaj atın
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 
-# Email Bildirimleri (Opsiyonel)
-# Gmail için: smtp.gmail.com, 587, uygulama şifresi kullanın
+# Diğer bildirim türleri (opsiyonel, boş bırakılabilir)
 EMAIL_SMTP_HOST=
-EMAIL_SMTP_PORT=
 EMAIL_USERNAME=
-EMAIL_PASSWORD=
-EMAIL_TO=
-
-# SMS Bildirimleri (Opsiyonel - Twilio)
 TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_PHONE_NUMBER=
-PHONE_NUMBER=
 EOF
 
 # Dosya izinlerini güvenli yap

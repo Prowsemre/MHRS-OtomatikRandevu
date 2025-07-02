@@ -401,6 +401,13 @@ namespace MHRS_OtomatikRandevu
             Console.WriteLine("🧪 İlk test denemesi yapılıyor... (Bot çalıştığını kontrol etmek için)");
             LogStatus("İlk test denemesi başlatıldı", null, true);
 
+            // İlk başlatma bildirimi gönder
+            if (_notificationService != null)
+            {
+                var startMessage = $"🤖 MHRS Bot Başlatıldı!\n\n🕐 Başlangıç: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n🎯 Hedef: İl({provinceIndex}) İlçe({districtIndex}) Klinik({clinicIndex})\n🧪 İlk test denemesi yapılıyor...";
+                _ = Task.Run(() => _notificationService.SendNotification(startMessage));
+            }
+
             while (!appointmentState)
             {
                 // İlk deneme saat kontrolü olmadan yapılır
@@ -457,11 +464,18 @@ namespace MHRS_OtomatikRandevu
                 if (slot == null || slot == default)
                 {
                     // İlk test denemesi ise özel mesaj
-                    if (attemptCount == 0)
+                    if (attemptCount == 1)
                     {
                         Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ✅ İlk test tamamlandı - Bot çalışıyor!");
                         Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🕐 Şimdi belirlenen saatlerde randevu arayacak...");
                         LogStatus("İlk test tamamlandı - Bot normal çalışma moduna geçti", null, true);
+                        
+                        // İlk test başarı bildirimi gönder
+                        if (_notificationService != null)
+                        {
+                            var testCompleteMessage = $"✅ İlk Test Tamamlandı!\n\n🤖 Bot çalışıyor ve MHRS'ye bağlandı\n🕐 Test zamanı: {DateTime.Now:HH:mm:ss}\n❌ İlk denemede randevu bulunamadı (Normal)\n🔍 Şimdi belirlenen saatlerde randevu arayacak\n📅 Hedef tarih: {ENV_START_DATE}";
+                            _ = Task.Run(() => _notificationService.SendNotification(testCompleteMessage));
+                        }
                     }
                     
                     // Basit log kaydı - sadece dosyaya
@@ -471,6 +485,13 @@ namespace MHRS_OtomatikRandevu
                     if (attemptCount > 0 && attemptCount % 5 == 0)
                     {
                         Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {attemptCount} deneme - Müsait randevu bulunamadı, arama devam ediyor...");
+                    }
+                    
+                    // Her 10 denemede bir "randevu bulunamadı" Telegram bildirimi gönder
+                    if (attemptCount > 0 && attemptCount % 10 == 0 && _notificationService != null)
+                    {
+                        var notFoundMessage = $"🔍 Randevu Arama Raporu\n\n❌ {attemptCount} deneme yapıldı, müsait randevu bulunamadı\n⏰ Saat: {DateTime.Now:HH:mm:ss}\n🔄 Arama devam ediyor...\n📅 Hedef tarih: {ENV_START_DATE}";
+                        _ = Task.Run(() => _notificationService.SendNotification(notFoundMessage));
                     }
                     
                     // Her 50 denemede bir Telegram/Email bildirimi gönder

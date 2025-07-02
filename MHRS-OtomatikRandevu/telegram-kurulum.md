@@ -38,43 +38,32 @@
 # .env dosyasını düzenleyin
 nano .env
 
+# VEYA bot manager ile:
+./bot-manager.sh editenv
+
 # Şu satırları doldurun:
 TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 TELEGRAM_CHAT_ID=123456789
 ```
 
-## 📧 4. ADIM: Email Bildirimi (Gmail Örneği)
-
-```bash
-# Gmail için .env dosyasına ekleyin:
-EMAIL_SMTP_HOST=smtp.gmail.com
-EMAIL_SMTP_PORT=587
-EMAIL_USERNAME=sizin@gmail.com
-EMAIL_PASSWORD=uygulama_sifreniz
-EMAIL_TO=sizin@gmail.com
-```
-
-### Gmail Uygulama Şifresi Alma:
-1. Google Hesap Ayarları → Güvenlik
-2. 2FA'yı etkinleştirin
-3. "Uygulama şifreleri" → "Diğer" → "MHRS Bot"
-4. Oluşturulan şifreyi `EMAIL_PASSWORD`'e yazın
-
-## 🧪 5. ADIM: Test Etme
+## 🧪 4. ADIM: Test Etme
 
 ```bash
 # Botu çalıştırın
 dotnet run
 
+# VEYA bot manager ile:
+./bot-manager.sh start
+
 # Bot başladığında ilk test bildirimi gönderecek
 ```
 
-## 📊 6. Bildirim Türleri
+## 📊 5. Bildirim Türleri
 
-Bot şu durumlarda bildirim gönderir:
+Bot şu durumlarda Telegram bildirimi gönderir:
 
 ### ✅ Başarılı Durumlar:
-- ✅ Randevu bulundu
+- 🎉 Randevu bulundu
 - ✅ Randevu başarıyla alındı
 
 ### ❌ Hata Durumları:
@@ -85,35 +74,34 @@ Bot şu durumlarda bildirim gönderir:
 - 🕐 Çalışma süresi
 - 🔄 Toplam deneme sayısı
 
-## 🔧 Sorun Giderme
+## 🔧 6. Sorun Giderme
 
 ### Telegram Bot Çalışmıyor:
-1. Token'ı kontrol edin
-2. Chat ID'yi kontrol edin
-3. Bot'a en az bir mesaj atmış olmanız gerekir
+1. **Token kontrolü**: BotFather'dan aldığınız token'ı doğru yazdığınızdan emin olun
+2. **Chat ID kontrolü**: @userinfobot'dan aldığınız Chat ID'yi doğru yazdığınızdan emin olun
+3. **İlk mesaj**: Bot'a en az bir defa mesaj atmış olmanız gerekir
+4. **Bot aktif mi**: Bot'u @BotFather'da devre dışı bırakmış olabilirsiniz
 
-### Email Çalışmıyor:
-1. SMTP ayarlarını kontrol edin
-2. Gmail için uygulama şifresi kullanın
-3. 2FA etkin olmalı
-
-### Loglar:
+### Test etmek için:
 ```bash
 # Bot loglarını kontrol edin
 tail -f randevu_log.txt
 
 # Sistemd servisi kullanıyorsanız:
 journalctl -fu mhrs-bot
+
+# Bot manager ile durum kontrolü:
+./bot-manager.sh status
 ```
 
-## 📱 Örnek .env Dosyası
+## 📱 7. Minimal .env Dosyası Örneği
 
 ```bash
-# MHRS Bot Ayarları
+# MHRS Bot Ayarları - SADECE GEREKLİ ALANLAR
 MHRS_TC=12345678901
 MHRS_PASSWORD=SifreNiz123
 
-# Lokasyon
+# Lokasyon (Program çalıştırıldığında ID'ler gösterilecek)
 MHRS_PROVINCE_ID=34
 MHRS_DISTRICT_ID=449
 MHRS_CLINIC_ID=165
@@ -125,16 +113,31 @@ MHRS_DOCTOR_ID=-1
 MHRS_START_DATE=2025-07-07
 MHRS_END_DATE=
 
-# Telegram (Önerilen)
+# Telegram Bot (BİLDİRİM İÇİN)
 TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 TELEGRAM_CHAT_ID=123456789
 
-# Email (Opsiyonel)
-EMAIL_SMTP_HOST=smtp.gmail.com
-EMAIL_SMTP_PORT=587
-EMAIL_USERNAME=sizin@gmail.com
-EMAIL_PASSWORD=abcd1234efgh5678
-EMAIL_TO=sizin@gmail.com
+# Diğer bildirim türleri boş bırakılabilir:
+EMAIL_SMTP_HOST=
+EMAIL_USERNAME=
+TWILIO_ACCOUNT_SID=
 ```
 
-Artık bot çalıştığında tüm önemli olayları Telegram ve/veya Email ile size bildirecek! 📱✅
+## 🚀 8. Hızlı Başlangıç
+
+```bash
+# 1. Telegram bot oluştur (@BotFather)
+# 2. Chat ID al (@userinfobot)
+# 3. .env dosyasını düzenle
+./bot-manager.sh editenv
+
+# 4. Botu başlat
+./bot-manager.sh start
+
+# 5. Logları takip et
+./bot-manager.sh logs
+```
+
+Artık sadece Telegram ile tüm önemli bildirimleri alacaksınız! 📱✅
+
+**İlk çalıştırıldığında bot size "İlk test denemesi" bildirimi gönderecek, böylece çalıştığını anlayacaksınız!** 🧪
