@@ -16,7 +16,7 @@ namespace MHRS_OtomatikRandevu.Models.ResponseModels
         [JsonPropertyName("warnings")]
         public object[] Warnings { get; set; }
 
-        [JsonPropertyName("wrrors")]
+        [JsonPropertyName("errors")]
         public object[] Errors { get; set; }
     }
 }

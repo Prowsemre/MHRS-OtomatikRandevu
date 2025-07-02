@@ -364,3 +364,9 @@ FodyWeavers.xsd
 
 /MHRS-OtomatikRandevu/App.config
 /MHRS-OtomatikRandevu/token.txt
+
+# MHRS Bot özel dosyalar - GÜVENLİK İÇİN
+.env
+token.txt
+randevu_log.txt
+randevu_basarili.txt
