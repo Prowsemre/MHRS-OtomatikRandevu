@@ -473,6 +473,13 @@ namespace MHRS_OtomatikRandevu
                         Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {attemptCount} deneme - Müsait randevu bulunamadı, arama devam ediyor...");
                     }
                     
+                    // Her 50 denemede bir Telegram/Email bildirimi gönder
+                    if (attemptCount > 0 && attemptCount % 50 == 0 && _notificationService != null)
+                    {
+                        var statusMessage = $"📊 MHRS Bot Durum Raporu\n\n🔄 Toplam Deneme: {attemptCount}\n⏰ Çalışma Süresi: {DateTime.Now.Subtract(DateTime.Now.Date):hh\\:mm}\n🔍 Durum: Randevu aranıyor...\n📅 Hedef Tarih: {ENV_START_DATE}";
+                        _ = Task.Run(() => _notificationService.SendNotification(statusMessage));
+                    }
+                    
                     Thread.Sleep(TimeSpan.FromMinutes(1));
                     continue;
                 }
@@ -491,7 +498,14 @@ namespace MHRS_OtomatikRandevu
                 Console.WriteLine($"📅 Tarih: {slot.BaslangicZamani}");
                 Console.WriteLine("⏳ Randevu alınıyor...");
                 
-                appointmentState = MakeAppointment(_client!, appointmentRequestModel, sendNotification: false);
+                // Randevu bulundu bildirimi gönder
+                if (_notificationService != null)
+                {
+                    var foundMessage = $"🎉 RANDEVU BULUNDU!\n\n📅 Tarih: {slot.BaslangicZamani}\n🔄 Deneme: #{attemptCount}\n⏳ Randevu alınıyor...";
+                    _ = Task.Run(() => _notificationService.SendNotification(foundMessage));
+                }
+                
+                appointmentState = MakeAppointment(_client!, appointmentRequestModel, sendNotification: true);
                 if (appointmentState)
                 {
                     LogStatus($"BAŞARILI! Randevu alındı - Deneme #{attemptCount}", slot.BaslangicZamani, true);
@@ -585,15 +599,23 @@ namespace MHRS_OtomatikRandevu
             var randevuResp = client.PostSimple(MHRSUrls.BaseUrl, MHRSUrls.MakeAppointment, appointmentRequestModel);
             if (randevuResp.StatusCode != HttpStatusCode.OK)
             {
-                Console.WriteLine($"Randevu alırken bir problem ile karşılaşıldı! \nRandevu Tarihi -> {appointmentRequestModel.BaslangicZamani}");
+                var errorMessage = $"❌ Randevu alırken bir problem ile karşılaşıldı!\nRandevu Tarihi: {appointmentRequestModel.BaslangicZamani}";
+                Console.WriteLine(errorMessage);
+                
+                if (sendNotification && _notificationService != null)
+                {
+                    _ = Task.Run(() => _notificationService.SendNotification(errorMessage));
+                }
                 return false;
             }
 
-            var message = $"Randevu alındı! \nRandevu Tarihi -> {appointmentRequestModel.BaslangicZamani}";
-            Console.WriteLine(message);
+            var successMessage = $"✅ BAŞARILI! Randevu alındı!\n📅 Tarih: {appointmentRequestModel.BaslangicZamani}\n🕐 Alınma Zamanı: {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
+            Console.WriteLine(successMessage);
 
             if (sendNotification && _notificationService != null)
-                _notificationService.SendNotification(message).Wait();
+            {
+                _ = Task.Run(() => _notificationService.SendNotification(successMessage));
+            }
 
             return true;
         }
