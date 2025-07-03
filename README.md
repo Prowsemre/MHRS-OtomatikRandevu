@@ -8,6 +8,7 @@ MHRS kullanıcı bilgileriniz ile giriş yaptıktan sonra İl-İlçe-Klinik-Dokt
 - ✅ **Tam Otomatik**: Randevu bulana kadar çalışır, başarılı olunca durur
 - ✅ **Platform Bağımsız**: Windows ve Linux'ta çalışır
 - ✅ **Güvenli**: .env dosyası ile güvenli parametre yönetimi
+- ✅ **Telegram Bildirimleri**: Randevu durumu anlık bildirim
 - ✅ **Loglama**: Tüm işlemleri detaylı loglama
 - ✅ **Saat Kontrolü**: MHRS'in aktif olduğu saatlerde çalışır
 - ✅ **Systemd Desteği**: Ubuntu'da servis olarak çalışır
@@ -68,6 +69,11 @@ MHRS_DOCTOR_ID=-1           # Doktor ID (-1: Farketmez)
 
 # Tarih Ayarları
 MHRS_START_DATE=2025-07-07  # Başlangıç tarihi (GG-AA-YYYY)
+
+# Telegram Bildirimleri (Önerilen)
+TELEGRAM_BOT_TOKEN=your_bot_token      # @BotFather'dan alın
+TELEGRAM_CHAT_ID=your_chat_id          # @userinfobot'dan alın
+TELEGRAM_NOTIFY_FREQUENCY=10           # Her kaç denemede bildirim (varsayılan: 10)
 ```
 
 ## 🎯 Kullanım
