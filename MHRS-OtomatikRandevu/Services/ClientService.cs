@@ -1,6 +1,7 @@
 ﻿using MHRS_OtomatikRandevu.Extensions;
 using MHRS_OtomatikRandevu.Models.ResponseModels;
 using MHRS_OtomatikRandevu.Services.Abstracts;
+using MHRS_OtomatikRandevu.Exceptions;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -28,13 +29,38 @@ namespace MHRS_OtomatikRandevu.Services
         public T GetSimple<T>(string baseUrl, string endpoint) where T : class
         {
             var url = string.Concat(baseUrl, endpoint);
+            
+            // Debug: Request bilgilerini yazdır
+            Console.WriteLine($"[DEBUG] Request URL: {url}");
+            Console.WriteLine($"[DEBUG] Authorization Header: {_client.DefaultRequestHeaders.Authorization?.ToString() ?? "YOK"}");
+            
             var httpResponse = _client.GetAsync(url).Result;
             var content = httpResponse.Content.ReadAsStringAsync().Result;
-            // Console.WriteLine("[DEBUG] API Response: " + content); // debug kapatıldı
+            
+            // Debug: Response bilgilerini yazdır
+            Console.WriteLine($"[DEBUG] Response Status: {(int)httpResponse.StatusCode} {httpResponse.ReasonPhrase}");
+            Console.WriteLine($"[DEBUG] Response Content: {content}");
             
             if (!httpResponse.IsSuccessStatusCode)
             {
+                if (httpResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    // Check if this is a session expiration error (LGN2001)
+                    if (content.Contains("LGN2001") || content.Contains("oturum sonlanmıştır"))
+                    {
+                        Console.WriteLine("[WARNING] Session expired (LGN2001). This usually happens when:");
+                        Console.WriteLine("  1. You logged in from another device/browser");
+                        Console.WriteLine("  2. Multiple instances of the bot are running");
+                        Console.WriteLine("  3. Session timed out");
+                        Console.WriteLine("[INFO] Auto-recovery will be attempted...");
+                        
+                        // Throw a specific exception to signal session expiration
+                        throw new SessionExpiredException("MHRS session expired (LGN2001). Re-login required.");
+                    }
+                }
+                
                 Console.WriteLine($"[ERROR] HTTP {(int)httpResponse.StatusCode}: {httpResponse.ReasonPhrase}");
+                Console.WriteLine($"[ERROR] Response Headers: {string.Join(", ", httpResponse.Headers.Select(h => $"{h.Key}={string.Join(",", h.Value)}"))}");
                 return null;
             }
             
@@ -89,9 +115,29 @@ namespace MHRS_OtomatikRandevu.Services
             {
                 try
                 {
-                    var response = await _client.PostAsJsonAsync(string.Concat(baseUrl, endpoint), requestModel);
+                    var url = string.Concat(baseUrl, endpoint);
+                    
+                    // Debug: Request bilgilerini yazdır
+                    Console.WriteLine($"[DEBUG] POST Request URL: {url}");
+                    Console.WriteLine($"[DEBUG] Authorization Header: {_client.DefaultRequestHeaders.Authorization?.ToString() ?? "YOK"}");
+                    
+                    var response = await _client.PostAsJsonAsync(url, requestModel);
                     var data = await response.Content.ReadAsStringAsync();
-                    // Console.WriteLine("[DEBUG] POST API Response: " + data); // debug kapatıldı
+                    
+                    // Debug: Response bilgilerini yazdır
+                    Console.WriteLine($"[DEBUG] POST Response Status: {(int)response.StatusCode} {response.ReasonPhrase}");
+                    Console.WriteLine($"[DEBUG] POST Response Content: {data}");
+                    
+                    // Check for session expiration in POST responses
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        if (data.Contains("LGN2001") || data.Contains("oturum sonlanmıştır"))
+                        {
+                            Console.WriteLine("[WARNING] Session expired (LGN2001) detected in POST request.");
+                            Console.WriteLine("[INFO] Auto-recovery will be attempted...");
+                            throw new SessionExpiredException("MHRS session expired (LGN2001). Re-login required.");
+                        }
+                    }
                     
                     if (string.IsNullOrEmpty(data))
                     {
@@ -159,7 +205,31 @@ namespace MHRS_OtomatikRandevu.Services
 
         public HttpResponseMessage PostSimple(string baseUrl, string endpoint, object requestModel)
         {
-            return _client.PostAsJsonAsync(string.Concat(baseUrl, endpoint), requestModel).Result;
+            var url = string.Concat(baseUrl, endpoint);
+            
+            // Debug: Request bilgilerini yazdır
+            Console.WriteLine($"[DEBUG] PostSimple Request URL: {url}");
+            Console.WriteLine($"[DEBUG] Authorization Header: {_client.DefaultRequestHeaders.Authorization?.ToString() ?? "YOK"}");
+            
+            var response = _client.PostAsJsonAsync(url, requestModel).Result;
+            var content = response.Content.ReadAsStringAsync().Result;
+            
+            // Debug: Response bilgilerini yazdır
+            Console.WriteLine($"[DEBUG] PostSimple Response Status: {(int)response.StatusCode} {response.ReasonPhrase}");
+            Console.WriteLine($"[DEBUG] PostSimple Response Content: {content}");
+            
+            // Check for session expiration in PostSimple responses
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                if (content.Contains("LGN2001") || content.Contains("oturum sonlanmıştır"))
+                {
+                    Console.WriteLine("[WARNING] Session expired (LGN2001) detected in PostSimple request.");
+                    Console.WriteLine("[INFO] Auto-recovery will be attempted...");
+                    throw new SessionExpiredException("MHRS session expired (LGN2001). Re-login required.");
+                }
+            }
+            
+            return response;
         }
 
         public void AddOrUpdateAuthorizationHeader(string jwtToken)
@@ -168,6 +238,12 @@ namespace MHRS_OtomatikRandevu.Services
                 _client.DefaultRequestHeaders.Remove("Authorization");
 
             _client.DefaultRequestHeaders.AddAuthorization(jwtToken);
+        }
+
+        public void ClearAuthorizationHeader()
+        {
+            if (_client.DefaultRequestHeaders.Any(x => x.Key == "Authorization"))
+                _client.DefaultRequestHeaders.Remove("Authorization");
         }
     }
 }

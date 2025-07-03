@@ -13,5 +13,7 @@ namespace MHRS_OtomatikRandevu.Services.Abstracts
         public HttpResponseMessage PostSimple(string baseUrl, string endpoint, object requestModel);
 
         void AddOrUpdateAuthorizationHeader(string jwtToken);
+
+        void ClearAuthorizationHeader();
     }
 }

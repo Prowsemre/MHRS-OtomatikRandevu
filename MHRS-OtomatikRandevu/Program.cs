@@ -5,6 +5,7 @@ using MHRS_OtomatikRandevu.Services;
 using MHRS_OtomatikRandevu.Services.Abstracts;
 using MHRS_OtomatikRandevu.Urls;
 using MHRS_OtomatikRandevu.Utils;
+using MHRS_OtomatikRandevu.Exceptions;
 using System.Net;
 using System.Globalization;   // saat kontrolü için
 
@@ -32,8 +33,54 @@ namespace MHRS_OtomatikRandevu
                            (h == 2 && m <= 3);
             bool morning = (h == 9 && m >= 55) || (h == 10 && m <= 15);
             bool evening = (h == 19 && m >= 55) || (h == 20 && m <= 15);
+            
+            // 15-45 dakika arası rastgele 3'lü gruplar (her saatte 2 grup = 6 dakika)
+            bool midHourRandom = IsInRandomMidHourWindow(h, m);
 
-            return hourly || night || morning || evening;
+            return hourly || night || morning || evening || midHourRandom;
+        }
+
+        static bool IsInRandomMidHourWindow(int hour, int minute)
+        {
+            // Her saat için sabit rastgele dakikalar (15-45 arası)
+            var randomTimes = GetRandomTimesForHour(hour);
+            return randomTimes.Contains(minute);
+        }
+
+        static List<int> GetRandomTimesForHour(int hour)
+        {
+            // Her saat için sabit seed kullanarak tutarlı rastgele dakikalar üret
+            var random = new Random(hour * 1000 + DateTime.Today.DayOfYear);
+            var times = new List<int>();
+            
+            // 15-45 dakika arası 2 grup, her grup 3 ardışık dakika
+            var availableMinutes = Enumerable.Range(15, 31).ToList(); // 15-45 arası (15-45)
+            
+            // İlk grup (3 ardışık dakika) - sondan 2 çıkarıp güvenli aralık bırak
+            if (availableMinutes.Count >= 3)
+            {
+                int firstStart = availableMinutes[random.Next(0, availableMinutes.Count - 2)];
+                times.AddRange(new[] { firstStart, firstStart + 1, firstStart + 2 });
+                
+                // İkinci grup için kullanılan dakikaları ve çevresini çıkar
+                var removeStart = Math.Max(0, firstStart - 5);
+                var removeEnd = Math.Min(availableMinutes.Count - 1, firstStart + 7);
+                var removeCount = removeEnd - removeStart + 1;
+                
+                if (removeStart < availableMinutes.Count && removeCount > 0 && removeCount <= availableMinutes.Count - removeStart)
+                {
+                    availableMinutes.RemoveRange(removeStart, removeCount);
+                }
+                
+                // İkinci grup
+                if (availableMinutes.Count >= 3)
+                {
+                    int secondStart = availableMinutes[random.Next(0, availableMinutes.Count - 2)];
+                    times.AddRange(new[] { secondStart, secondStart + 1, secondStart + 2 });
+                }
+            }
+            
+            return times.OrderBy(x => x).ToList();
         }
 
         // Konsolda şifreyi gizli okuma fonksiyonu
@@ -130,7 +177,51 @@ namespace MHRS_OtomatikRandevu
             // İl Seçim Bölümü
             var provinceIdStr = Environment.GetEnvironmentVariable("MHRS_PROVINCE_ID");
             int provinceIndex = !string.IsNullOrEmpty(provinceIdStr) ? int.Parse(provinceIdStr) : -1;
-            var provinceListResponse = _client.GetSimple<List<GenericResponseModel>>(MHRSUrls.BaseUrl, MHRSUrls.GetProvinces);
+            
+            List<GenericResponseModel>? provinceListResponse = null;
+            try
+            {
+                provinceListResponse = _client.GetSimple<List<GenericResponseModel>>(MHRSUrls.BaseUrl, MHRSUrls.GetProvinces);
+            }
+            catch (SessionExpiredException ex)
+            {
+                Console.WriteLine($"[WARNING] 🔄 Session expired during province list retrieval: {ex.Message}");
+                LogStatus("Session expired during province list retrieval, attempting recovery", null, true);
+                
+                // Attempt session recovery
+                var newToken = ForceLogin(_client!);
+                if (newToken == null || string.IsNullOrEmpty(newToken.Token))
+                {
+                    Console.WriteLine("[ERROR] ❌ Session recovery failed during initial setup! Bot will exit.");
+                    LogStatus("Session recovery failed during initial setup! Bot exiting.", null, true);
+                    return;
+                }
+                
+                // Update token
+                JWT_TOKEN = newToken.Token;
+                TOKEN_END_DATE = newToken.Expiration;
+                _client!.AddOrUpdateAuthorizationHeader(JWT_TOKEN);
+                
+                Console.WriteLine("[INFO] ✅ Session recovery completed. Retrying province list retrieval...");
+                LogStatus("Session recovery completed, retrying province list retrieval", null, true);
+                
+                // Retry the province list request with new token
+                try
+                {
+                    provinceListResponse = _client.GetSimple<List<GenericResponseModel>>(MHRSUrls.BaseUrl, MHRSUrls.GetProvinces);
+                }
+                catch (SessionExpiredException retryEx)
+                {
+                    Console.WriteLine($"[ERROR] ❌ Session expired again after recovery: {retryEx.Message}");
+                    Console.WriteLine("[ERROR] This suggests multiple logins or system issues. Please check:");
+                    Console.WriteLine("  1. Make sure no other instances of the bot are running");
+                    Console.WriteLine("  2. Make sure you're not logged in from another browser/device");
+                    Console.WriteLine("  3. Try running the bot later if MHRS system is under maintenance");
+                    LogStatus("Session expired again after recovery during initial setup", null, true);
+                    return;
+                }
+            }
+            
             if (provinceListResponse == null || !provinceListResponse.Any())
             {
                 ConsoleUtil.WriteText("Bir hata meydana geldi!", 2000);
@@ -176,7 +267,47 @@ namespace MHRS_OtomatikRandevu
             // İlçe Seçim Bölümü
             var districtIdStr = Environment.GetEnvironmentVariable("MHRS_DISTRICT_ID");
             int districtIndex = -2; // -2: hiç seçilmedi, -1: FARKETMEZ
-            var districtList = _client.GetSimple<List<GenericResponseModel>>(MHRSUrls.BaseUrl, string.Format(MHRSUrls.GetDistricts, provinceIndex));
+            
+            List<GenericResponseModel>? districtList = null;
+            try
+            {
+                districtList = _client.GetSimple<List<GenericResponseModel>>(MHRSUrls.BaseUrl, string.Format(MHRSUrls.GetDistricts, provinceIndex));
+            }
+            catch (SessionExpiredException ex)
+            {
+                Console.WriteLine($"[WARNING] 🔄 Session expired during district list retrieval: {ex.Message}");
+                LogStatus("Session expired during district list retrieval, attempting recovery", null, true);
+                
+                // Attempt session recovery
+                var newToken = ForceLogin(_client!);
+                if (newToken == null || string.IsNullOrEmpty(newToken.Token))
+                {
+                    Console.WriteLine("[ERROR] ❌ Session recovery failed during district setup! Bot will exit.");
+                    LogStatus("Session recovery failed during district setup! Bot exiting.", null, true);
+                    return;
+                }
+                
+                // Update token
+                JWT_TOKEN = newToken.Token;
+                TOKEN_END_DATE = newToken.Expiration;
+                _client!.AddOrUpdateAuthorizationHeader(JWT_TOKEN);
+                
+                Console.WriteLine("[INFO] ✅ Session recovery completed. Retrying district list retrieval...");
+                LogStatus("Session recovery completed, retrying district list retrieval", null, true);
+                
+                // Retry the district list request with new token
+                try
+                {
+                    districtList = _client.GetSimple<List<GenericResponseModel>>(MHRSUrls.BaseUrl, string.Format(MHRSUrls.GetDistricts, provinceIndex));
+                }
+                catch (SessionExpiredException retryEx)
+                {
+                    Console.WriteLine($"[ERROR] ❌ Session expired again after recovery: {retryEx.Message}");
+                    LogStatus("Session expired again after recovery during district setup", null, true);
+                    return;
+                }
+            }
+            
             if (districtList == null || !districtList.Any())
             {
                 ConsoleUtil.WriteText("Bir hata meydana geldi!", 2000);
@@ -404,29 +535,37 @@ namespace MHRS_OtomatikRandevu
             int attemptCount = 0;
             bool firstTestDone = false;
 
-            // İlk test denemesi (saat kontrolü olmadan)
-            Console.WriteLine("🧪 İlk test denemesi yapılıyor... (Bot çalıştığını kontrol etmek için)");
-            LogStatus("İlk test denemesi başlatıldı", null, true);
+            // İlk randevu kontrolü (sürekli arama modu) - HEMEN BAŞLA
+            Console.WriteLine("🔍 Sürekli randevu arama modu başlatılıyor... (İlk 5 deneme 3 dakikada bir)");
+            LogStatus("Sürekli randevu arama modu başlatılıyor - İlk 5 deneme 3 dakikada bir", null, true);
 
             // İlk başlatma bildirimi gönder
             if (_notificationService != null)
             {
-                var startMessage = $"🤖 MHRS Bot Başlatıldı!\n\n🕐 Başlangıç: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n🎯 Hedef: İl({provinceIndex}) İlçe({districtIndex}) Klinik({clinicIndex})\n📅 Tarih: {ENV_START_DATE}\n🧪 İlk test denemesi yapılıyor...";
+                var startMessage = $"🚀 MHRS Bot Sürekli Arama Başladı!\n\n🕐 Başlangıç: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n🎯 Hedef: İl({provinceIndex}) İlçe({districtIndex}) Klinik({clinicIndex})\n📅 Tarih: {ENV_START_DATE}\n� Sürekli arama: İlk 5 deneme 3 dakikada bir\n⏰ Sonra belirlenen saatlerde çalışır";
                 _ = Task.Run(() => _notificationService.SendNotification(startMessage));
             }
 
             while (!appointmentState)
             {
-                // İlk deneme saat kontrolü olmadan yapılır
-                if (!firstTestDone)
+                // İlk başlatmada her zaman çalış, sonra belirlenen saatlerde çalış
+                if (!firstTestDone || attemptCount <= 5) // İlk 5 deneme sürekli (3 dakikada bir = 15 dakika)
                 {
-                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] İlk test denemesi - Saat kontrolü atlanıyor");
-                    LogStatus("İlk test denemesi - Saat kontrolü atlanıyor", null, true);
-                    firstTestDone = true;
+                    if (!firstTestDone)
+                    {
+                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🔍 İlk randevu kontrolü - Sürekli arama modu başlıyor");
+                        LogStatus("İlk randevu kontrolü - Sürekli arama modu başlıyor", null, true);
+                        firstTestDone = true;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🔍 Deneme #{attemptCount} - Sürekli arama devam ediyor (3 dakikada bir)");
+                        LogStatus($"Deneme #{attemptCount} - Sürekli arama devam ediyor (3 dakikada bir)", null, true);
+                    }
                 }
                 else
                 {
-                    // İlk denemeden sonra normal saat kontrolü
+                    // 5. denemeden sonra belirlenen saat aralıklarında çalış
                     if (!IsWithinAllowedWindow(DateTime.Now))
                     {
                         if (attemptCount % 30 == 0) // Her 30 denemede bir konsola göster
@@ -467,35 +606,134 @@ namespace MHRS_OtomatikRandevu
                     BitisZamani = endDate
                 };
 
-                var slot = GetSlot(_client!, slotRequestModel);
-                if (slot == null || slot == default)
+                SubSlot? slot = null;
+                try
                 {
-                    // İlk test denemesi ise özel mesaj
-                    if (attemptCount == 1)
+                    slot = GetSlot(_client!, slotRequestModel);
+                }
+                catch (SessionExpiredException ex)
+                {
+                    Console.WriteLine($"[WARNING] 🔄 Session expired detected: {ex.Message}");
+                    LogStatus($"Session expired detected, attempting recovery (Deneme #{attemptCount})", null, true);
+                    
+                    // Attempt session recovery
+                    var newToken = ForceLogin(_client!);
+                    if (newToken == null || string.IsNullOrEmpty(newToken.Token))
                     {
-                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ✅ İlk test tamamlandı - Bot çalışıyor!");
-                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🕐 Şimdi belirlenen saatlerde randevu arayacak...");
-                        LogStatus("İlk test tamamlandı - Bot normal çalışma moduna geçti", null, true);
+                        Console.WriteLine("[ERROR] ❌ Session recovery failed! Bot will exit.");
+                        LogStatus("Session recovery failed! Bot exiting.", null, true);
                         
-                        // İlk test başarı bildirimi gönder
                         if (_notificationService != null)
                         {
-                            var testCompleteMessage = $"✅ İlk Test Tamamlandı!\n\n🤖 Bot çalışıyor ve MHRS'ye bağlandı\n🕐 Test zamanı: {DateTime.Now:HH:mm:ss}\n❌ İlk denemede randevu bulunamadı (Normal)\n🔍 Şimdi belirlenen saatlerde randevu arayacak\n📅 Hedef tarih: {ENV_START_DATE}";
-                            _ = Task.Run(() => _notificationService.SendNotification(testCompleteMessage));
+                            var errorMessage = $"❌ MHRS Bot Durdu!\n\n🔐 Session recovery başarısız\n⏰ Saat: {DateTime.Now:HH:mm:ss}\n🔄 Deneme: #{attemptCount}\n\n⚠️ Manuel müdahale gerekiyor";
+                            _ = Task.Run(() => _notificationService.SendNotification(errorMessage));
                         }
+                        return;
                     }
                     
-                    // Basit log kaydı - sadece dosyaya
-                    LogStatus($"Deneme #{attemptCount} - Müsait randevu bulunamadı");
+                    // Update token
+                    JWT_TOKEN = newToken.Token;
+                    TOKEN_END_DATE = newToken.Expiration;
+                    _client!.AddOrUpdateAuthorizationHeader(JWT_TOKEN);
                     
-                    // Her 10 denemede bir konsola minimal bilgi ver (ilk denemeden sonra)
-                    if (attemptCount > 1 && attemptCount % 10 == 0)
+                    Console.WriteLine("[INFO] ✅ Session recovery completed. Retrying slot request...");
+                    LogStatus($"Session recovery completed, retrying slot request (Deneme #{attemptCount})", null, true);
+                    
+                    // Send recovery success notification
+                    if (_notificationService != null)
                     {
-                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Deneme #{attemptCount} - Müsait randevu bulunamadı");
+                        var recoveryMessage = $"✅ Session Recovery Başarılı!\n\n🔄 MHRS Bot otomatik olarak session'ı yeniledi\n⏰ Saat: {DateTime.Now:HH:mm:ss}\n🔄 Deneme: #{attemptCount}\n🎯 Randevu arama devam ediyor...";
+                        _ = Task.Run(() => _notificationService.SendNotification(recoveryMessage));
                     }
                     
-                    // Telegram bildirim frekansına göre "randevu bulunamadı" bildirimi gönder
-                    if (attemptCount > 1 && attemptCount % TELEGRAM_NOTIFY_FREQUENCY == 0 && _notificationService != null)
+                    // Retry the slot request with new token
+                    try
+                    {
+                        slot = GetSlot(_client!, slotRequestModel);
+                    }
+                    catch (SessionExpiredException retryEx)
+                    {
+                        Console.WriteLine($"[ERROR] ❌ Session expired again after recovery: {retryEx.Message}");
+                        LogStatus($"Session expired again after recovery (Deneme #{attemptCount})", null, true);
+                        
+                        if (_notificationService != null)
+                        {
+                            var retryErrorMessage = $"❌ MHRS Bot Problem!\n\n🔐 Session recovery sonrası tekrar session süresi doldu\n⏰ Saat: {DateTime.Now:HH:mm:ss}\n🔄 Deneme: #{attemptCount}\n\n⚠️ Çoklu giriş veya sistem problemi olabilir";
+                            _ = Task.Run(() => _notificationService.SendNotification(retryErrorMessage));
+                        }
+                        
+                        // Skip this iteration, will try again in next loop
+                        Thread.Sleep(TimeSpan.FromMinutes(1));
+                        continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ERROR] ❌ Unexpected error during slot request: {ex.Message}");
+                    LogStatus($"Unexpected error during slot request: {ex.Message} (Deneme #{attemptCount})", null, true);
+                    
+                    // Skip this iteration
+                    Thread.Sleep(TimeSpan.FromMinutes(1));
+                    continue;
+                }
+                if (slot == null || slot == default)
+                {
+                    // İlk birkaç deneme ise özel mesaj
+                    if (attemptCount <= 5)
+                    {
+                        if (attemptCount == 1)
+                        {
+                            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ✅ Bot çalışıyor ve MHRS'ye bağlandı!");
+                            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] � İlk randevu kontrolünde slot bulunamadı, devam ediyor...");
+                            LogStatus("Bot çalışıyor - İlk randevu kontrolünde slot bulunamadı, devam ediyor", null, true);
+                            
+                            // İlk kontrol bildirimi gönder
+                            if (_notificationService != null)
+                            {
+                                var firstCheckMessage = $"✅ Bot Bağlantı Başarılı!\n\n🤖 MHRS'ye başarıyla bağlandı\n🕐 İlk kontrol: {DateTime.Now:HH:mm:ss}\n❌ İlk kontrolde randevu bulunamadı\n🔍 Anında arama devam ediyor...\n📅 Hedef tarih: {ENV_START_DATE}";
+                                _ = Task.Run(() => _notificationService.SendNotification(firstCheckMessage));
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🔍 Deneme #{attemptCount} - Randevu bulunamadı, 3 dakika sonra tekrar");
+                            LogStatus($"Deneme #{attemptCount} - Randevu bulunamadı, 3 dakika sonra tekrar", null, true);
+                        }
+                        
+                        // İlk 5 denemede 3 dakika bekle, her denemeyi bildir
+                        if (attemptCount > 1 && _notificationService != null)
+                        {
+                            var searchMessage = $"🔍 Randevu Arama #{attemptCount}\n\n❌ Müsait randevu bulunamadı\n⏰ Saat: {DateTime.Now:HH:mm:ss}\n⏳ 3 dakika sonra tekrar aranacak\n📅 Hedef tarih: {ENV_START_DATE}";
+                            _ = Task.Run(() => _notificationService.SendNotification(searchMessage));
+                        }
+                        
+                        // 5. deneme sonrası özet bildirim gönder
+                        if (attemptCount == 5 && _notificationService != null)
+                        {
+                            var summaryMessage = $"📋 İlk 5 Deneme Özeti\n\n🔍 İlk 5 deneme tamamlandı\n⏰ Başlangıç: {DateTime.Now.AddMinutes(-15):HH:mm}\n⏰ Bitiş: {DateTime.Now:HH:mm}\n❌ 5 denemede de randevu bulunamadı\n\n🕐 Bundan sonra belirlenen saat aralıklarında arama yapılacak\n📅 Hedef tarih: {ENV_START_DATE}";
+                            _ = Task.Run(() => _notificationService.SendNotification(summaryMessage));
+                        }
+                        
+                        Thread.Sleep(TimeSpan.FromMinutes(3));
+                    }
+                    else
+                    {
+                        // Normal deneme mesajları
+                        // Basit log kaydı - sadece dosyaya
+                        LogStatus($"Deneme #{attemptCount} - Müsait randevu bulunamadı");
+                        
+                        // Her 10 denemede bir konsola minimal bilgi ver
+                        if (attemptCount % 10 == 0)
+                        {
+                            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Deneme #{attemptCount} - Müsait randevu bulunamadı");
+                        }
+                        
+                        // Normal bekleme süresi
+                        Thread.Sleep(TimeSpan.FromMinutes(1));
+                    }
+                    
+                    // Telegram bildirim frekansına göre "randevu bulunamadı" bildirimi gönder (normal modda - 5. denemeden sonra)
+                    if (attemptCount > 5 && attemptCount % TELEGRAM_NOTIFY_FREQUENCY == 0 && _notificationService != null)
                     {
                         var notFoundMessage = $"🔍 Randevu Arama Raporu\n\n❌ {attemptCount} deneme yapıldı, müsait randevu bulunamadı\n⏰ Saat: {DateTime.Now:HH:mm:ss}\n🔄 Arama devam ediyor...\n📅 Hedef tarih: {ENV_START_DATE}";
                         _ = Task.Run(() => _notificationService.SendNotification(notFoundMessage));
@@ -533,7 +771,84 @@ namespace MHRS_OtomatikRandevu
                     _ = Task.Run(() => _notificationService.SendNotification(foundMessage));
                 }
                 
-                appointmentState = MakeAppointment(_client!, appointmentRequestModel, sendNotification: true);
+                bool appointmentResult = false;
+                try
+                {
+                    appointmentResult = MakeAppointment(_client!, appointmentRequestModel, sendNotification: true);
+                }
+                catch (SessionExpiredException ex)
+                {
+                    Console.WriteLine($"[WARNING] 🔄 Session expired during appointment booking: {ex.Message}");
+                    LogStatus($"Session expired during appointment booking, attempting recovery (Deneme #{attemptCount})", slot.BaslangicZamani, true);
+                    
+                    // Attempt session recovery
+                    var newToken = ForceLogin(_client!);
+                    if (newToken == null || string.IsNullOrEmpty(newToken.Token))
+                    {
+                        Console.WriteLine("[ERROR] ❌ Session recovery failed during appointment booking!");
+                        LogStatus("Session recovery failed during appointment booking!", slot.BaslangicZamani, true);
+                        
+                        if (_notificationService != null)
+                        {
+                            var errorMessage = $"❌ RANDEVU ALINAMADI!\n\n🔐 Session recovery başarısız (randevu alırken)\n📅 Slot: {slot.BaslangicZamani}\n⏰ Saat: {DateTime.Now:HH:mm:ss}\n🔄 Deneme: #{attemptCount}\n\n⚠️ Slot kaybedildi, arama devam ediyor";
+                            _ = Task.Run(() => _notificationService.SendNotification(errorMessage));
+                        }
+                        
+                        // Skip this iteration, continue searching
+                        Thread.Sleep(TimeSpan.FromMinutes(1));
+                        continue;
+                    }
+                    
+                    // Update token
+                    JWT_TOKEN = newToken.Token;
+                    TOKEN_END_DATE = newToken.Expiration;
+                    _client!.AddOrUpdateAuthorizationHeader(JWT_TOKEN);
+                    
+                    Console.WriteLine("[INFO] ✅ Session recovery completed. Retrying appointment booking...");
+                    LogStatus($"Session recovery completed, retrying appointment booking (Deneme #{attemptCount})", slot.BaslangicZamani, true);
+                    
+                    // Send recovery notification
+                    if (_notificationService != null)
+                    {
+                        var recoveryMessage = $"✅ Session Recovery (Randevu)!\n\n🔄 MHRS Bot session'ı yeniledi\n📅 Slot: {slot.BaslangicZamani}\n⏰ Saat: {DateTime.Now:HH:mm:ss}\n🔄 Deneme: #{attemptCount}\n⏳ Randevu booking tekrar deneniyor...";
+                        _ = Task.Run(() => _notificationService.SendNotification(recoveryMessage));
+                    }
+                    
+                    // Retry appointment booking with new token
+                    try
+                    {
+                        appointmentResult = MakeAppointment(_client!, appointmentRequestModel, sendNotification: true);
+                    }
+                    catch (SessionExpiredException retryEx)
+                    {
+                        Console.WriteLine($"[ERROR] ❌ Session expired again during appointment retry: {retryEx.Message}");
+                        LogStatus($"Session expired again during appointment retry (Deneme #{attemptCount})", slot.BaslangicZamani, true);
+                        
+                        if (_notificationService != null)
+                        {
+                            var retryErrorMessage = $"❌ RANDEVU ALINAMADI!\n\n🔐 Recovery sonrası tekrar session süresi doldu\n📅 Slot: {slot.BaslangicZamani}\n⏰ Saat: {DateTime.Now:HH:mm:ss}\n🔄 Deneme: #{attemptCount}\n\n⚠️ Slot kaybedildi, arama devam ediyor";
+                            _ = Task.Run(() => _notificationService.SendNotification(retryErrorMessage));
+                        }
+                        
+                        // Skip this iteration, continue searching
+                        Thread.Sleep(TimeSpan.FromMinutes(1));
+                        continue;
+                    }
+                    catch (Exception retryEx)
+                    {
+                        Console.WriteLine($"[ERROR] ❌ Unexpected error during appointment retry: {retryEx.Message}");
+                        LogStatus($"Unexpected error during appointment retry: {retryEx.Message} (Deneme #{attemptCount})", slot.BaslangicZamani, true);
+                        appointmentResult = false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ERROR] ❌ Unexpected error during appointment booking: {ex.Message}");
+                    LogStatus($"Unexpected error during appointment booking: {ex.Message} (Deneme #{attemptCount})", slot.BaslangicZamani, true);
+                    appointmentResult = false;
+                }
+                
+                appointmentState = appointmentResult;
                 if (appointmentState)
                 {
                     LogStatus($"BAŞARILI! Randevu alındı - Deneme #{attemptCount}", slot.BaslangicZamani, true);
@@ -563,11 +878,8 @@ namespace MHRS_OtomatikRandevu
 
         static JwtTokenModel? GetToken(IClientService client)
         {
-            // token.txt ’i, çalıştırılabilir dosyanın bir üst dizinine koy
-            var exeDir  = AppContext.BaseDirectory;               //  …/publish/
-            var rootDir = Directory.GetParent(exeDir)!.FullName;  //  …/linux-x64/
-            rootDir     = Directory.GetParent(rootDir)!.FullName; //  …/net7.0/
-            var tokenFilePath = Path.Combine(rootDir, TOKEN_FILE_NAME);
+            // Cross-platform token file path
+            var tokenFilePath = Path.Combine(Directory.GetCurrentDirectory(), TOKEN_FILE_NAME);
 
             try
             {
@@ -596,6 +908,69 @@ namespace MHRS_OtomatikRandevu
                     File.WriteAllText(tokenFilePath, loginResponse.Data!.Jwt);
 
                 return new() { Token = loginResponse.Data!.Jwt, Expiration = JwtTokenUtil.GetTokenExpireTime(loginResponse.Data!.Jwt) };
+            }
+        }
+
+        /// <summary>
+        /// Forces a new login by clearing the cached token and re-authenticating
+        /// </summary>
+        static JwtTokenModel? ForceLogin(IClientService client)
+        {
+            Console.WriteLine("[INFO] 🔄 Session recovery: Forcing fresh login...");
+            LogStatus("Session recovery: Forcing fresh login", null, true);
+            
+            // Clear cached token file to force fresh login (cross-platform path)
+            var tokenFilePath = Path.Combine(Directory.GetCurrentDirectory(), TOKEN_FILE_NAME);
+            
+            // Delete existing token file
+            try
+            {
+                if (File.Exists(tokenFilePath))
+                {
+                    File.Delete(tokenFilePath);
+                    Console.WriteLine("[INFO] 🗑️  Cleared cached token");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WARNING] Could not delete token file: {ex.Message}");
+            }
+            
+            // Clear authorization header to avoid sending expired token
+            client.ClearAuthorizationHeader();
+            Console.WriteLine("[INFO] 🔓 Cleared authorization header");
+            
+            // Perform fresh login
+            var loginRequestModel = new LoginRequestModel
+            {
+                KullaniciAdi = TC_NO,
+                Parola = SIFRE
+            };
+
+            try
+            {
+                var loginResponse = client.Post<LoginResponseModel>(MHRSUrls.BaseUrl, MHRSUrls.Login, loginRequestModel).Result;
+                if (loginResponse.Data == null || string.IsNullOrEmpty(loginResponse.Data?.Jwt))
+                {
+                    Console.WriteLine("[ERROR] ❌ Session recovery failed: Could not obtain new token");
+                    LogStatus("Session recovery failed: Could not obtain new token", null, true);
+                    return null;
+                }
+
+                // Save new token
+                if (!string.IsNullOrEmpty(tokenFilePath))
+                    File.WriteAllText(tokenFilePath, loginResponse.Data!.Jwt);
+
+                Console.WriteLine("[INFO] ✅ Session recovery successful: New token obtained");
+                LogStatus("Session recovery successful: New token obtained", null, true);
+                
+                return new() { Token = loginResponse.Data!.Jwt, Expiration = JwtTokenUtil.GetTokenExpireTime(loginResponse.Data!.Jwt) };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] ❌ Session recovery failed with exception: {ex.Message}");
+                LogStatus($"Session recovery failed with exception: {ex.Message}", null, true);
+                return null;
             }
         }
 
