@@ -27,6 +27,7 @@ show_usage() {
     echo "  install   - Botu kurulum scripti çalıştır"
     echo "  success   - Başarılı randevu dosyasını göster"
     echo "  clean     - Log dosyalarını temizle"
+    echo "  cleanonly - Sadece temizlik yap, bot'u başlatma"
     echo "  env       - .env dosyasını yeniden oluştur"
     echo "  editenv   - .env dosyasını düzenle"
     echo "  reset     - Bot'u temizle ve yeniden başlat (başarı durumunu sil)"
@@ -98,6 +99,61 @@ clean_logs() {
         echo -e "${GREEN}randevu_basarili.txt silindi.${NC}"
     fi
     echo -e "${GREEN}Log temizleme tamamlandı.${NC}"
+}
+
+clean_only() {
+    echo -e "${BLUE}🧹 Sadece Temizlik - Bot Başlatılmaz${NC}"
+    echo "===================================="
+    
+    # Bot çalışıyor mu kontrol et
+    if systemctl is-active $SERVICE_NAME >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  Bot şu anda çalışıyor!${NC}"
+        echo -e "${YELLOW}   Temizlik için önce durdurun: sudo systemctl stop mhrs-bot${NC}"
+        echo ""
+        read -p "Bot'u otomatik durdurup temizlik yapmak istiyor musunuz? (y/N): " stop_bot
+        
+        if [[ "$stop_bot" =~ ^[Yy]$ ]]; then
+            echo -e "${YELLOW}Bot durduruluyor...${NC}"
+            sudo systemctl stop $SERVICE_NAME
+            echo -e "${GREEN}✅ Bot durduruldu${NC}"
+        else
+            echo -e "${RED}❌ Temizlik iptal edildi.${NC}"
+            return
+        fi
+    fi
+    
+    echo ""
+    echo -e "${YELLOW}🗑️  Başarı durumu ve cache dosyaları temizleniyor...${NC}"
+    
+    # Dosyaları temizle
+    local cleaned_count=0
+    local files=("randevu_basarili.txt" "token.txt" "log.txt" "kayitliRandevular.json")
+    
+    for file in "${files[@]}"; do
+        if [ -f "$file" ]; then
+            rm -f "$file"
+            echo -e "${GREEN}   ✅ $file silindi${NC}"
+            ((cleaned_count++))
+        fi
+    done
+    
+    # Log dosyalarını temizle (wildcard)
+    if ls randevu_log*.txt 1> /dev/null 2>&1; then
+        rm -f randevu_log*.txt
+        echo -e "${GREEN}   ✅ randevu_log*.txt silindi${NC}"
+        ((cleaned_count++))
+    fi
+    
+    echo ""
+    if [ $cleaned_count -eq 0 ]; then
+        echo -e "${GREEN}✨ Zaten temiz! Silinecek dosya bulunamadı.${NC}"
+    else
+        echo -e "${GREEN}✅ Temizlik tamamlandı! $cleaned_count tür dosya silindi.${NC}"
+    fi
+    
+    echo ""
+    echo -e "${BLUE}📋 Bot'u manuel başlatmak için:${NC}"
+    echo -e "${GREEN}   sudo systemctl start mhrs-bot${NC}"
 }
 
 reset_bot() {
@@ -193,6 +249,9 @@ case "${1:-}" in
         ;;
     clean)
         clean_logs
+        ;;
+    cleanonly)
+        clean_only
         ;;
     reset)
         reset_bot
