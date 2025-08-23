@@ -29,6 +29,7 @@ show_usage() {
     echo "  clean     - Log dosyalarını temizle"
     echo "  env       - .env dosyasını yeniden oluştur"
     echo "  editenv   - .env dosyasını düzenle"
+    echo "  reset     - Bot'u temizle ve yeniden başlat (başarı durumunu sil)"
 }
 
 start_bot() {
@@ -99,6 +100,42 @@ clean_logs() {
     echo -e "${GREEN}Log temizleme tamamlandı.${NC}"
 }
 
+reset_bot() {
+    echo -e "${BLUE}🔄 Bot Reset - Temizlik ve Yeniden Başlatma${NC}"
+    echo "============================================"
+    
+    # Bot'u durdur
+    echo -e "${YELLOW}1. Bot durduruluyor...${NC}"
+    sudo systemctl stop $SERVICE_NAME
+    
+    # Dosyaları temizle
+    echo -e "${YELLOW}2. Başarı durumu ve cache dosyaları temizleniyor...${NC}"
+    rm -f randevu_basarili.txt
+    rm -f token.txt
+    rm -f log.txt
+    rm -f kayitliRandevular.json
+    rm -f randevu_log*.txt
+    echo -e "${GREEN}   ✅ Temizlik tamamlandı${NC}"
+    
+    # Bot'u başlat
+    echo -e "${YELLOW}3. Bot yeniden başlatılıyor...${NC}"
+    sudo systemctl start $SERVICE_NAME
+    
+    # Durum kontrol
+    sleep 2
+    if systemctl is-active $SERVICE_NAME >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ Bot başarıyla reset edildi ve başlatıldı!${NC}"
+        echo ""
+        echo -e "${BLUE}📊 İzleme:${NC}"
+        echo -e "${GREEN}Canlı log:${NC}  sudo journalctl -u $SERVICE_NAME -f"
+        echo -e "${GREEN}Durum:${NC}      sudo systemctl status $SERVICE_NAME"
+    else
+        echo -e "${RED}❌ Bot başlatma hatası!${NC}"
+        echo -e "${YELLOW}Durum kontrol ediliyor...${NC}"
+        sudo systemctl status $SERVICE_NAME --no-pager
+    fi
+}
+
 install_bot() {
     if [ -f "ubuntu-setup.sh" ]; then
         chmod +x ubuntu-setup.sh
@@ -156,6 +193,9 @@ case "${1:-}" in
         ;;
     clean)
         clean_logs
+        ;;
+    reset)
+        reset_bot
         ;;
     env)
         create_env
