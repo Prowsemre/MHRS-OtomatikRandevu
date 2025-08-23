@@ -145,7 +145,26 @@ namespace MHRS_OtomatikRandevu
             SIFRE = Environment.GetEnvironmentVariable("MHRS_PASSWORD") ?? string.Empty;
             
             // Tarih ve bildirim ayarlarını oku
-            ENV_START_DATE = Environment.GetEnvironmentVariable("MHRS_START_DATE") ?? "2025-07-07";
+            var envStartDateRaw = Environment.GetEnvironmentVariable("MHRS_START_DATE");
+            try
+            {
+                if (!string.IsNullOrEmpty(envStartDateRaw))
+                {
+                    var dateArr = envStartDateRaw.Split('-').Select(x => Convert.ToInt32(x)).ToArray();
+                    var date = new DateTime(dateArr[2], dateArr[1], dateArr[0]);
+                    ENV_START_DATE = date.ToString("dd-MM-yyyy");
+                }
+                else
+                {
+                    // Boş bırakılmışsa bugünden başla
+                    ENV_START_DATE = DateTime.Now.ToString("dd-MM-yyyy");
+                }
+            }
+            catch
+            {
+                // Hatalı formatta girilmişse bugünden başla
+                ENV_START_DATE = DateTime.Now.ToString("dd-MM-yyyy");
+            }
             var telegramFreq = Environment.GetEnvironmentVariable("TELEGRAM_NOTIFY_FREQUENCY");
             if (!string.IsNullOrEmpty(telegramFreq) && int.TryParse(telegramFreq, out int freq))
                 TELEGRAM_NOTIFY_FREQUENCY = freq;
@@ -490,7 +509,7 @@ namespace MHRS_OtomatikRandevu
             string? startDate;
             string? endDate;
 
-            // .env'den başlangıç tarihi oku, yoksa varsayılan 07-07-2025 kullan
+            // .env'den başlangıç tarihi oku
             var envStartDate = Environment.GetEnvironmentVariable("MHRS_START_DATE");
             if (!string.IsNullOrEmpty(envStartDate))
             {
@@ -502,18 +521,37 @@ namespace MHRS_OtomatikRandevu
                 }
                 catch
                 {
-                    // Geçersizse varsayılan 07-07-2025 kullan
-                    startDate = new DateTime(2025, 7, 7).ToString("yyyy-MM-dd HH:mm:ss");
+                    // Geçersizse bugünden başla
+                    startDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                 }
             }
             else
             {
-                // .env yoksa varsayılan 07-07-2025
-                startDate = new DateTime(2025, 7, 7).ToString("yyyy-MM-dd HH:mm:ss");
+                // .env'de MHRS_START_DATE yoksa bugünden başla
+                startDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
             }
 
-            // Bitiş tarihi otomatik olarak bugünden 12 gün sonrası
-            endDate = DateTime.Now.AddDays(12).ToString("yyyy-MM-dd HH:mm:ss");
+            // Bitiş tarihi - MHRS_END_DATE env değişkenini kontrol et
+            var envEndDate = Environment.GetEnvironmentVariable("MHRS_END_DATE");
+            if (!string.IsNullOrEmpty(envEndDate))
+            {
+                try
+                {
+                    var endDateArr = envEndDate.Split('-').Select(x => Convert.ToInt32(x)).ToArray();
+                    var endDateParsed = new DateTime(endDateArr[2], endDateArr[1], endDateArr[0]);
+                    endDate = endDateParsed.ToString("yyyy-MM-dd HH:mm:ss");
+                }
+                catch
+                {
+                    // Geçersizse varsayılan olarak bugünden 12 gün sonrası
+                    endDate = DateTime.Now.AddDays(12).ToString("yyyy-MM-dd HH:mm:ss");
+                }
+            }
+            else
+            {
+                // .env'de MHRS_END_DATE yoksa varsayılan olarak bugünden 12 gün sonrası
+                endDate = DateTime.Now.AddDays(12).ToString("yyyy-MM-dd HH:mm:ss");
+            }
 
             #region Randevu Alım Bölümü
             ConsoleUtil.WriteText("Yapmış olduğunuz seçimler doğrultusunda müsait olan ilk randevu otomatik olarak alınacaktır.", 3000);
