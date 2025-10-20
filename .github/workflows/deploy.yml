@@ -1,0 +1,35 @@
+name: Deploy MHRS Bot
+
+# Sadece 'master' branch'ine push yapıldığında çalışır
+on:
+  push:
+    branches: [ master ] # Burayı kendi ana branch adınızla (main veya master) değiştirin
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Sunucuya SSH ile bağlan, kodu çek, derle ve yeniden başlat
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+        script: |
+          # Proje dizinine git
+          cd ${{ secrets.PROJECT_PATH }}
+
+          # Sunucudaki yerel değişiklikleri (varsa) sil ve GitHub'daki en son sürümü zorla al
+          git fetch --all
+          git reset --hard origin/master # 'master' yerine kendi branch adınızı yazın
+
+          # Eski derleme kalıntılarını temizle
+          rm -rf bin obj
+
+          # Projeyi yeniden derle
+          dotnet build -c Release
+
+          # Servisi yeniden başlat
+          sudo systemctl restart mhrs-bot
