@@ -544,7 +544,7 @@ namespace MHRS_OtomatikRandevu
                 catch
                 {
                     // Geçersizse varsayılan olarak bugünden 12 gün sonrası
-                    endDate = DateTime.Now.AddDays(12).ToString("yyyy-MM-dd HH:mm:ss");
+                    endDate = DateTime.Now.AddDays(15).ToString("yyyy-MM-dd HH:mm:ss");
                 }
             }
             else
